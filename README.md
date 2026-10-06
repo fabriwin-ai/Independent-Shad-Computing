@@ -151,6 +151,17 @@ The project does not attempt to redesign a game engine, replace its renderer, mo
 
 The first implementation should contain a CPU/reference backend before introducing GPU-specific complexity.
 
+## Dependencies and licensing
+
+The project itself is CC0-1.0. External dependencies retain their own licenses.
+
+The current dependency audit identifies:
+
+- simple-ecs: MIT, header-only, upstream revision `1e887ecc28f36e41604fc21a4bf311a0e778892a`
+- enkiTS: Zlib, upstream revision `404a3bf8f855039dfff2052184d6308655286c07`
+
+No third-party source or header is currently copied into this repository. See [DEPENDENCIES.md](DEPENDENCIES.md) for the header-level audit and integration policy.
+
 ## Design rule
 
 The host engine remains the host.
