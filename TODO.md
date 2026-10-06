@@ -7,6 +7,9 @@
 - [ ] Add README.md.
 - [ ] Add LOD.md.
 - [ ] Define dependency management.
+- [x] Audit current dependency and header licenses.
+- [ ] Pin dependency revisions or releases.
+- [ ] Decide fetched vs vendored dependency policy.
 
 ## Phase 1 - Core data model
 
