@@ -29,7 +29,9 @@ void usage() {
     std::printf(
         "usage: isc_run <pipeline.fa> [--backend auto|cpu|vulkan] [--profile NAME] [--frames N]\n"
         "               [--size WxH] [--input in.ppm] [--out out.ppm] [--lod 0..3 --scale S]\n"
-        "               [--host-ms MS] [--threads N] [--validation] [--compare] [--dump-ast] [--dump-ir]\n");
+        "               [--host-ms MS] [--threads N] [--validation] [--compare] [--dump-ast] [--dump-ir]\n"
+        "\n"
+        "  --lod/--scale pin the controller to that rung (no adaptation) - useful for benchmarking.\n");
 }
 
 bool read_file(const std::string& path, std::string& out) {
@@ -47,6 +49,10 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         usage();
         return 2;
+    }
+    if (std::strcmp(argv[1], "--help") == 0 || std::strcmp(argv[1], "-h") == 0) {
+        usage();
+        return 0;
     }
     std::string fa = argv[1], input_path, out_path, profile;
     isc::BackendKind backend = isc::BackendKind::Auto;
@@ -127,9 +133,12 @@ int main(int argc, char** argv) {
         in.resize(W, H);
     }
 
-    if (lod >= 0 && !rt.controller().force(static_cast<isc::Lod>(lod), scale)) {
-        std::fprintf(stderr, "rung LOD%d @ %.3f is not on this profile's ladder\n", lod, scale);
-        return 1;
+    if (lod >= 0) {  // benchmark a fixed rung: jump to it and stop adapting
+        if (!rt.controller().force(static_cast<isc::Lod>(lod), scale)) {
+            std::fprintf(stderr, "rung LOD%d @ %.3f is not on this profile's ladder\n", lod, scale);
+            return 1;
+        }
+        rt.controller().set_pinned(true);
     }
 
     isc::FrameStats st;

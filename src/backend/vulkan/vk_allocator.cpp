@@ -98,11 +98,24 @@ bool Allocator::carve(Block& b, VkDeviceSize size, VkDeviceSize alignment, VkDev
 }
 
 bool Allocator::allocate(const VkMemoryRequirements& req, MemoryUsage usage, Allocation& out, std::string* error) {
-    const VkMemoryPropertyFlags required =
-        usage == MemoryUsage::HostVisible
-            ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
-            : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    int type = find_type(req.memoryTypeBits, required, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    // Host-visible memory is always requested HOST_COHERENT so that no explicit
+    // flush/invalidate is needed around the persistent mappings.
+    constexpr VkMemoryPropertyFlags kHostCoherent =
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    VkMemoryPropertyFlags required = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VkMemoryPropertyFlags preferred = 0;
+    switch (usage) {
+        case MemoryUsage::DeviceLocal: break;
+        case MemoryUsage::Upload:
+            required = kHostCoherent;
+            preferred = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            break;
+        case MemoryUsage::Readback:
+            required = kHostCoherent;
+            preferred = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            break;
+    }
+    int type = find_type(req.memoryTypeBits, required, preferred);
     if (type < 0 && usage == MemoryUsage::DeviceLocal) type = find_type(req.memoryTypeBits, 0, 0);
     if (type < 0) {
         if (error) *error = "no compatible Vulkan memory type";

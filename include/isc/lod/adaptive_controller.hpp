@@ -37,8 +37,19 @@ public:
     // Steps down immediately if the current rung exceeds the cap.
     void set_scale_cap(float max_scale);
 
-    // Pin a rung (debugging / tests). Returns false if no rung matches.
+    // Jump to a rung (debugging / tests); adaptation continues from there on
+    // the next update() unless the controller is pinned. Returns false if no
+    // rung matches.
     bool force(Lod lod, float scale);
+
+    // While pinned, update() still measures load but never changes the rung
+    // (benchmarking a fixed rung, e.g. `isc_run --lod 1 --scale 0.75`). The
+    // memory cap (set_scale_cap) is a hard limit and still applies.
+    void set_pinned(bool pinned) {
+        pinned_ = pinned;
+        over_ = under_ = 0;
+    }
+    bool pinned() const { return pinned_; }
 
     Lod lod() const { return ladder_[rung_].lod; }
     float resolution_scale() const { return ladder_[rung_].scale; }
@@ -57,6 +68,7 @@ private:
     std::uint32_t under_ = 0;
     float scale_cap_ = 1.0f;
     double last_load_ = 0.0;
+    bool pinned_ = false;
 };
 
 }  // namespace isc::lod

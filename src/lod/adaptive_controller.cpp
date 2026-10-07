@@ -62,6 +62,7 @@ bool AdaptiveController::update(double layer_ms, double host_frame_ms) {
     const double frame_budget = profile_.frame_budget_ms();
     const double host_load = (host_frame_ms > 0.0 && frame_budget > 0.0) ? host_frame_ms / frame_budget : 0.0;
     last_load_ = std::max(layer_load, host_load);
+    if (pinned_) return false;  // load is still reported, the rung stays put
 
     const std::size_t before = rung_;
     if (last_load_ > 1.0) {

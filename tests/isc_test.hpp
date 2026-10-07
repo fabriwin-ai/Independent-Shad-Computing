@@ -48,16 +48,21 @@ struct Skipped {
         if (!(cond)) ::isc_test::fail(__FILE__, __LINE__, "CHECK(" #cond ") failed"); \
     } while (0)
 
-#define CHECK_EQ(a, b)                                                                     \
-    do {                                                                                   \
-        const auto& va_ = (a);                                                             \
-        const auto& vb_ = (b);                                                             \
-        if (!(va_ == vb_)) {                                                               \
-            std::ostringstream os_;                                                        \
-            os_ << "CHECK_EQ(" #a ", " #b ") failed: " << va_ << " != " << vb_;            \
-            ::isc_test::fail(__FILE__, __LINE__, os_.str());                               \
-        }                                                                                  \
-    } while (0)
+namespace isc_test {
+// A function (not `const auto& v = (a);` inside the macro) so that temporaries
+// in the operands - e.g. `*cache.take(key)` on a temporary std::optional - live
+// until the comparison and the message are done (end of the full-expression).
+template <class A, class B>
+void check_eq(const A& a, const B& b, const char* expr_a, const char* expr_b, const char* file, int line) {
+    if (!(a == b)) {
+        std::ostringstream os;
+        os << "CHECK_EQ(" << expr_a << ", " << expr_b << ") failed: " << a << " != " << b;
+        fail(file, line, os.str());
+    }
+}
+}  // namespace isc_test
+
+#define CHECK_EQ(a, b) ::isc_test::check_eq((a), (b), #a, #b, __FILE__, __LINE__)
 
 #define CHECK_NEAR(a, b, eps)                                                                        \
     do {                                                                                             \

@@ -91,6 +91,23 @@ ISC_TEST(lod_dead_band_prevents_oscillation) {
     CHECK_EQ(c.rung(), start);
 }
 
+ISC_TEST(lod_pinned_rung_ignores_load_but_reports_it) {
+    RenderProfile p;
+    p.hysteresis_frames = 1;
+    lod::AdaptiveController c(p);
+    CHECK(c.force(Lod::Basic, 0.75f));
+    c.set_pinned(true);
+    const std::size_t pinned = c.rung();
+    for (int i = 0; i < 10; ++i) CHECK(!c.update(40.0));  // 10x over budget
+    for (int i = 0; i < 10; ++i) CHECK(!c.update(0.0));   // far under budget
+    CHECK_EQ(c.rung(), pinned);
+    c.update(8.0);
+    CHECK_NEAR(c.last_load(), 2.0, 1e-9);  // load still measured (8 ms / 4 ms budget)
+    c.set_pinned(false);
+    CHECK(c.update(0.0));  // adaptation resumes (hysteresis_frames = 1)
+    CHECK(c.rung() == pinned + 1);
+}
+
 ISC_TEST(lod_host_frame_time_counts) {
     RenderProfile p;  // 60 fps -> 16.6 ms
     lod::AdaptiveController c(p);

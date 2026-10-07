@@ -14,7 +14,7 @@ add_executable(isc_tests
 target_link_libraries(isc_tests PRIVATE isc::core)
 target_include_directories(isc_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(MSVC)
-    target_compile_options(isc_tests PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(isc_tests PRIVATE /W4 /permissive- /utf-8 /MP)
     target_compile_definitions(isc_tests PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 endif()
 

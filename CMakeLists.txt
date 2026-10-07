@@ -57,7 +57,8 @@ target_compile_definitions(isc_core PUBLIC
     ISC_VERSION_STRING="${PROJECT_VERSION}")
 
 if(MSVC)
-    target_compile_options(isc_core PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    # /MP: compile the translation units of a target in parallel.
+    target_compile_options(isc_core PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus /MP)
     target_compile_definitions(isc_core PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
     if(ISC_WARNINGS_AS_ERRORS)
         target_compile_options(isc_core PRIVATE /WX)

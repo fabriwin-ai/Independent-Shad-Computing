@@ -2,7 +2,7 @@
 //
 // Per frame (one command buffer, one submit, one fence):
 //
-//   host frame --memcpy--> in (host-visible; zero-copy on UMA/ReBAR)
+//   host frame --memcpy--> in (Upload: host-visible, zero-copy on UMA/ReBAR)
 //   for each stage:
 //     [resample]  src -> work_in              (dynamic resolution)
 //     blur_h      work -> tmp
@@ -10,7 +10,7 @@
 //     [reduce]    work, det -> partials       (gradient: edge-energy sums)
 //     [optimize]  partials -> params          (gradient descent on the GPU)
 //     composite   src, det, params -> out
-//   out (host-visible) --memcpy--> host frame
+//   out (Readback: host-visible + HOST_CACHED) --memcpy--> host frame
 //
 // All buffers come from a byte-budgeted LRU cache backed by a block
 // sub-allocator, so steady-state frames perform no Vulkan allocations and
@@ -103,7 +103,8 @@ public:
 
     void configure(const RenderProfile& p) override {
         allocator_.configure(p.memory_block_bytes(), p.memory_budget_bytes());
-        cache_.set_budget(p.buffer_cache_bytes());
+        cache_headroom_ = p.buffer_cache_bytes();
+        cache_.set_budget(cache_headroom_);
         allocator_.trim();
     }
 
@@ -301,7 +302,16 @@ private:
         return frame_buffers_.back().get();
     }
 
+    // The frame's own working set always stays cached: it was resident during
+    // the frame anyway, so keeping it costs no extra peak memory, and evicting
+    // part of it would force a re-allocation (and fresh page faults) on every
+    // steady-state frame. `buffer_cache_mb` is the headroom kept *on top* of
+    // that, for neighbouring dynamic-resolution rungs. The allocator's memory
+    // budget remains the hard cap (acquire() flushes the cache when it is hit).
     void release_frame_buffers() {
+        VkDeviceSize frame_bytes = 0;
+        for (const auto& b : frame_buffers_) frame_bytes += b->size;
+        cache_.set_budget(cache_headroom_ + frame_bytes);
         for (auto& b : frame_buffers_) cache_.put(CacheKey{b->size, static_cast<std::uint64_t>(b->usage)}, *b, b->size);
         frame_buffers_.clear();
     }
@@ -395,7 +405,7 @@ private:
             return slot != nullptr;
         };
         Buffer* in = nullptr;
-        if (!get(in, full, MemoryUsage::HostVisible)) return false;
+        if (!get(in, full, MemoryUsage::Upload)) return false;
         std::vector<StageBuffers> sb(n);
         for (std::size_t i = 0; i < n; ++i) {
             StageBuffers& s = sb[i];
@@ -404,8 +414,9 @@ private:
             if (!get(s.tmp, work, MemoryUsage::DeviceLocal)) return false;
             if (!get(s.det, work, MemoryUsage::DeviceLocal)) return false;
             if (plan.stages[i].gradient && !get(s.partials, partial_bytes, MemoryUsage::DeviceLocal)) return false;
-            if (!get(s.params, 16, MemoryUsage::HostVisible)) return false;
-            if (!get(s.out, full, last ? MemoryUsage::HostVisible : MemoryUsage::DeviceLocal)) return false;
+            // params: host writes the declared weight, GPU may optimise it, host reads it back.
+            if (!get(s.params, 16, MemoryUsage::Readback)) return false;
+            if (!get(s.out, full, last ? MemoryUsage::Readback : MemoryUsage::DeviceLocal)) return false;
         }
 
         // ---- capture: host -> GPU-visible memory ----------------------------
@@ -515,6 +526,7 @@ private:
     vk::Context ctx_;
     vk::Allocator allocator_;
     ResourceCache<Buffer> cache_{64ull << 20};
+    std::uint64_t cache_headroom_ = 64ull << 20;  // profile buffer_cache_mb
     std::vector<std::unique_ptr<Buffer>> frame_buffers_;
     Buffer dummy_;
 

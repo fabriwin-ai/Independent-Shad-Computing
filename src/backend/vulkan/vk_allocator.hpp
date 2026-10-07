@@ -10,14 +10,20 @@ namespace isc::vk {
 
 enum class MemoryUsage : std::uint32_t {
     DeviceLocal = 0,  // GPU-only intermediates
-    HostVisible = 1,  // host import/export; prefers DEVICE_LOCAL|HOST_VISIBLE (UMA / ReBAR = zero copy)
+    // Host writes, GPU reads (frame import, parameters). Prefers DEVICE_LOCAL|HOST_VISIBLE
+    // (UMA / ReBAR = zero copy); write-combined memory is fine for streaming writes.
+    Upload = 1,
+    // GPU writes, host reads (frame export, optimised parameters). Prefers HOST_CACHED:
+    // CPU reads from uncached write-combined memory are an order of magnitude slower
+    // (measured on Intel HD Graphics Gen11: ~150 ms vs a few ms for a 720p RGBA32F frame).
+    Readback = 2,
 };
 
 struct Allocation {
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkDeviceSize offset = 0;
     VkDeviceSize size = 0;
-    void* mapped = nullptr;  // host pointer at `offset` (HostVisible only)
+    void* mapped = nullptr;  // host pointer at `offset` (Upload / Readback only)
     std::uint32_t block = 0xFFFFFFFFu;
     bool valid() const { return memory != VK_NULL_HANDLE; }
 };

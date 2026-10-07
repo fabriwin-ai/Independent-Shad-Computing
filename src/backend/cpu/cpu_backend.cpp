@@ -36,7 +36,8 @@ public:
 
     void configure(const RenderProfile& p) override {
         budget_ = p.memory_budget_bytes();
-        cache_.set_budget(p.buffer_cache_bytes());
+        cache_headroom_ = p.buffer_cache_bytes();
+        cache_.set_budget(cache_headroom_);
     }
 
     bool execute(const plan::ExecutionPlan& plan, const RenderTarget& input, RenderTarget& output, FrameStats& stats,
@@ -216,6 +217,9 @@ private:
             stats.stages.push_back(std::move(st));
         }
 
+        // Keep this frame's whole working set warm; buffer_cache_mb is headroom on
+        // top of it (same policy as the Vulkan backend).
+        cache_.set_budget(cache_headroom_ + frame_bytes_);
         release(captured);
         for (auto& d : data) {
             release(d.work_in);
@@ -231,6 +235,7 @@ private:
     DeviceCaps caps_;
     ResourceCache<RenderTarget> cache_;
     std::uint64_t budget_ = 256 * kMiB;
+    std::uint64_t cache_headroom_ = 64 * kMiB;  // profile buffer_cache_mb
     std::uint64_t frame_bytes_ = 0;
 };
 
