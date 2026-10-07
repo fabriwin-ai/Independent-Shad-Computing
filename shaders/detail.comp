@@ -1,0 +1,29 @@
+#version 450
+// Vertical box blur of `tmp`, then detail = src - blur (rgb), alpha = 0.
+// Mirrors cpu::detail.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Src { vec4 src[]; };
+layout(std430, set = 0, binding = 1) readonly buffer Tmp { vec4 tmp[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Det { vec4 det[]; };
+
+layout(push_constant) uniform Push {
+    uint w;
+    uint h;
+    uint radius;
+} pc;
+
+void main() {
+    uvec2 id = gl_GlobalInvocationID.xy;
+    if (id.x >= pc.w || id.y >= pc.h) return;
+
+    int r = int(pc.radius);
+    int last = int(pc.h) - 1;
+    vec3 acc = vec3(0.0);
+    for (int k = -r; k <= r; ++k) {
+        int y = clamp(int(id.y) + k, 0, last);
+        acc += tmp[uint(y) * pc.w + id.x].rgb;
+    }
+    uint i = id.y * pc.w + id.x;
+    det[i] = vec4(src[i].rgb - acc * (1.0 / float(2 * r + 1)), 0.0);
+}

@@ -1,0 +1,63 @@
+#version 450
+// Gradient pass, step 2: sum the partials (fixed order, deterministic) and
+// run projected gradient descent on the artifact weight entirely on the GPU,
+// so the composite can read the optimised weight without a CPU round trip.
+// Mirrors opt::EdgeEnergyLoss + opt::gradient_descent.
+//
+// params[0] = vec4(weight, iterations, final_loss, initial_loss)
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Partials { vec4 partials[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer Params { vec4 params[]; };
+
+layout(push_constant) uniform Push {
+    uint count;          // number of partials
+    uint iterations;
+    float weight;        // initial weight
+    float learning_rate;
+    float target;        // desired edge-energy ratio
+    float weight_min;
+    float weight_max;
+    float inv_n;         // 1 / (w * h * 3)
+    float tolerance;
+} pc;
+
+shared vec3 sdata[256];
+
+void main() {
+    uint t = gl_LocalInvocationIndex;
+    vec3 acc = vec3(0.0);
+    for (uint i = t; i < pc.count; i += 256u) acc += partials[i].xyz;
+    sdata[t] = acc;
+    memoryBarrierShared();
+    barrier();
+    for (uint s = 128u; s > 0u; s >>= 1u) {
+        if (t < s) sdata[t] += sdata[t + s];
+        memoryBarrierShared();
+        barrier();
+    }
+    if (t != 0u) return;
+
+    float A = sdata[0].x * pc.inv_n;
+    float B = sdata[0].y * pc.inv_n;
+    float C = sdata[0].z * pc.inv_n;
+    float T = pc.target * A;
+    float norm = 1.0 / max(A * A, 1e-12);
+
+    float w = pc.weight;
+    float E = A + 2.0 * w * B + w * w * C;
+    float initial_loss = (E - T) * (E - T) * norm;
+
+    uint it = 0u;
+    while (it < pc.iterations) {
+        E = A + 2.0 * w * B + w * w * C;
+        float g = 2.0 * (E - T) * (2.0 * B + 2.0 * w * C) * norm;
+        float nw = clamp(w - pc.learning_rate * g, pc.weight_min, pc.weight_max);
+        float step_size = abs(nw - w);
+        w = nw;
+        ++it;
+        if (step_size < pc.tolerance) break;
+    }
+    E = A + 2.0 * w * B + w * w * C;
+    params[0] = vec4(w, float(it), (E - T) * (E - T) * norm, initial_loss);
+}

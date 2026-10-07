@@ -1,0 +1,19 @@
+// The README example: one gradient-optimised detail enhancement.
+// Run:  isc_run basic.fa --frames 120 --out basic.ppm
+
+!float {
+    precision = fp32;
+    accumulation = fp32;
+}
+
+!artifact {
+    source = framebuffer;
+    gradient = enabled;
+    iterations = 4;
+    weight = 0.25;
+}
+
+render {
+    input = framebuffer;
+    output = display;
+}

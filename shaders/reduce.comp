@@ -1,0 +1,51 @@
+#version 450
+// Gradient pass, step 1: per-workgroup partial sums of the edge-energy
+// coefficients (see opt::EdgeEnergy):
+//   A = |grad src|^2   B = grad src . grad det   C = |grad det|^2
+// Forward differences with clamp-to-edge, summed over RGB.
+// One vec4(A, B, C, 0) per 16x16 workgroup; optimize.comp sums them.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Src { vec4 src[]; };
+layout(std430, set = 0, binding = 1) readonly buffer Det { vec4 det[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Partials { vec4 partials[]; };
+
+layout(push_constant) uniform Push {
+    uint w;
+    uint h;
+} pc;
+
+shared vec3 sdata[256];
+
+void main() {
+    uvec2 id = gl_GlobalInvocationID.xy;
+    uint li = gl_LocalInvocationIndex;
+
+    vec3 v = vec3(0.0);
+    if (id.x < pc.w && id.y < pc.h) {
+        uint xn = min(id.x + 1u, pc.w - 1u);
+        uint yn = min(id.y + 1u, pc.h - 1u);
+        uint i = id.y * pc.w + id.x;
+        uint ix = id.y * pc.w + xn;
+        uint iy = yn * pc.w + id.x;
+        vec3 gxi = src[ix].rgb - src[i].rgb;
+        vec3 gyi = src[iy].rgb - src[i].rgb;
+        vec3 gxd = det[ix].rgb - det[i].rgb;
+        vec3 gyd = det[iy].rgb - det[i].rgb;
+        v.x = dot(gxi, gxi) + dot(gyi, gyi);
+        v.y = dot(gxi, gxd) + dot(gyi, gyd);
+        v.z = dot(gxd, gxd) + dot(gyd, gyd);
+    }
+    sdata[li] = v;
+    memoryBarrierShared();
+    barrier();
+
+    for (uint s = 128u; s > 0u; s >>= 1u) {
+        if (li < s) sdata[li] += sdata[li + s];
+        memoryBarrierShared();
+        barrier();
+    }
+    if (li == 0u) {
+        partials[gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x] = vec4(sdata[0], 0.0);
+    }
+}

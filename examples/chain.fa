@@ -1,0 +1,31 @@
+// Two named stages: a wide, fixed-weight local-contrast pass followed by a
+// fine, gradient-optimised detail pass that consumes its output.
+
+!float {
+    precision = fp32;
+    accumulation = fp64;   // reductions in double on the CPU backend
+}
+
+!artifact contrast {
+    source = framebuffer;
+    radius = 4;
+    weight = 0.15;
+}
+
+!artifact detail {
+    source = contrast;
+    radius = 1;
+    gradient = enabled;
+    iterations = 8;
+    weight = 0.2;
+    learning_rate = 0.4;
+    target = 1.3;          // aim for +30% edge energy vs. the source
+    weight_min = 0.0;
+    weight_max = 1.0;
+}
+
+render {
+    input = detail;
+    output = display;
+    profile = quality;
+}

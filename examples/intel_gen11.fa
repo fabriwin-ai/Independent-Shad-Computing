@@ -1,0 +1,61 @@
+// Tuned for Intel(R) HD Graphics Gen11 (Ice Lake iGPU), from its Vulkan
+// device profile:
+//   - integrated, ONE 3.89 GiB heap shared with system RAM (UMA)
+//     -> small memory budget, zero-copy host-visible buffers
+//   - one graphics+compute+transfer queue (no async compute)
+//     -> 2 frames in flight max, keep GPU passes short
+//   - shaderFloat64 = 0 -> stay on fp32 (fp64 would fall back)
+//   - subgroup 8..32, 32 KiB shared memory, 1024 invocations per workgroup
+
+!float {
+    precision = fp32;
+    accumulation = fp32;
+}
+
+!artifact sharpen {
+    source = framebuffer;
+    radius = 1;
+    gradient = enabled;
+    iterations = 4;
+    weight = 0.25;
+    target = 1.2;
+}
+
+profile gen11 {
+    base = balanced;
+
+    // frame budget: 60 fps game, layer may use ~3 ms of GPU time
+    target_fps = 60;
+    enhance_budget_ms = 3.0;
+
+    // adaptive LOD: never above LOD2 on an iGPU, may bypass entirely
+    lod_min = bypass;
+    lod_max = extended;
+    lod_start = basic;
+
+    // dynamic resolution of the enhancement working set
+    dynamic_resolution = enabled;
+    resolution_scale_min = 0.5;
+    resolution_scale_max = 1.0;
+    resolution_scale_step = 0.125;
+    resolution_scale_start = 0.75;
+
+    // hysteresis: fall fast, climb slowly
+    upscale_threshold = 0.7;
+    hysteresis_frames = 45;
+    downscale_frames = 2;
+
+    // memory: shared RAM -> modest budget, 16 MiB device blocks,
+    // 48 MiB of recycled buffers so resolution changes do not reallocate
+    memory_budget_mb = 192;
+    memory_block_mb = 16;
+    buffer_cache_mb = 48;
+    frames_in_flight = 2;
+}
+
+render {
+    input = sharpen;
+    output = display;
+    backend = vulkan;
+    profile = gen11;
+}

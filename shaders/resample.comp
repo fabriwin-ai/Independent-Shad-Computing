@@ -1,0 +1,36 @@
+#version 450
+// Bilinear resample with pixel-centre mapping and clamp-to-edge.
+// Mirrors cpu::resample (src/backend/cpu/cpu_kernels.hpp).
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Src { vec4 src[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer Dst { vec4 dst[]; };
+
+layout(push_constant) uniform Push {
+    uint sw;
+    uint sh;
+    uint dw;
+    uint dh;
+} pc;
+
+vec4 at(uint x, uint y) { return src[y * pc.sw + x]; }
+
+void main() {
+    uvec2 id = gl_GlobalInvocationID.xy;
+    if (id.x >= pc.dw || id.y >= pc.dh) return;
+
+    float rx = float(pc.sw) / float(pc.dw);
+    float ry = float(pc.sh) / float(pc.dh);
+    float fx = clamp((float(id.x) + 0.5) * rx - 0.5, 0.0, float(pc.sw - 1u));
+    float fy = clamp((float(id.y) + 0.5) * ry - 0.5, 0.0, float(pc.sh - 1u));
+    uint x0 = uint(floor(fx));
+    uint y0 = uint(floor(fy));
+    uint x1 = min(x0 + 1u, pc.sw - 1u);
+    uint y1 = min(y0 + 1u, pc.sh - 1u);
+    float tx = fx - float(x0);
+    float ty = fy - float(y0);
+
+    vec4 a = at(x0, y0) * (1.0 - tx) + at(x1, y0) * tx;
+    vec4 b = at(x0, y1) * (1.0 - tx) + at(x1, y1) * tx;
+    dst[id.y * pc.dw + id.x] = a * (1.0 - ty) + b * ty;
+}

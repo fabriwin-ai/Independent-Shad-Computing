@@ -1,0 +1,48 @@
+#version 450
+// out = clamp(src + weight * upsample(detail), 0, 1); alpha from src.
+// The weight comes from params[0].x (written by optimize.comp or the host).
+// Mirrors cpu::composite.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Src { vec4 src[]; };
+layout(std430, set = 0, binding = 1) readonly buffer Det { vec4 det[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Params { vec4 params[]; };
+layout(std430, set = 0, binding = 3) writeonly buffer Out { vec4 dst[]; };
+
+layout(push_constant) uniform Push {
+    uint w;    // full resolution
+    uint h;
+    uint dw;   // detail (working) resolution
+    uint dh;
+} pc;
+
+vec3 det_at(uint x, uint y) { return det[y * pc.dw + x].rgb; }
+
+void main() {
+    uvec2 id = gl_GlobalInvocationID.xy;
+    if (id.x >= pc.w || id.y >= pc.h) return;
+
+    vec3 d;
+    if (pc.dw == pc.w && pc.dh == pc.h) {
+        d = det_at(id.x, id.y);
+    } else {
+        float rx = float(pc.dw) / float(pc.w);
+        float ry = float(pc.dh) / float(pc.h);
+        float fx = clamp((float(id.x) + 0.5) * rx - 0.5, 0.0, float(pc.dw - 1u));
+        float fy = clamp((float(id.y) + 0.5) * ry - 0.5, 0.0, float(pc.dh - 1u));
+        uint x0 = uint(floor(fx));
+        uint y0 = uint(floor(fy));
+        uint x1 = min(x0 + 1u, pc.dw - 1u);
+        uint y1 = min(y0 + 1u, pc.dh - 1u);
+        float tx = fx - float(x0);
+        float ty = fy - float(y0);
+        vec3 a = det_at(x0, y0) * (1.0 - tx) + det_at(x1, y0) * tx;
+        vec3 b = det_at(x0, y1) * (1.0 - tx) + det_at(x1, y1) * tx;
+        d = a * (1.0 - ty) + b * ty;
+    }
+
+    uint i = id.y * pc.w + id.x;
+    vec4 s = src[i];
+    float weight = params[0].x;
+    dst[i] = vec4(clamp(s.rgb + weight * d, 0.0, 1.0), s.a);
+}

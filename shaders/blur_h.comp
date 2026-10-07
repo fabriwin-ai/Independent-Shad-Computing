@@ -1,0 +1,27 @@
+#version 450
+// Horizontal box blur (radius r, clamp-to-edge). Mirrors cpu::blur_h.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Src { vec4 src[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer Tmp { vec4 tmp[]; };
+
+layout(push_constant) uniform Push {
+    uint w;
+    uint h;
+    uint radius;
+} pc;
+
+void main() {
+    uvec2 id = gl_GlobalInvocationID.xy;
+    if (id.x >= pc.w || id.y >= pc.h) return;
+
+    int r = int(pc.radius);
+    int last = int(pc.w) - 1;
+    uint row = id.y * pc.w;
+    vec4 acc = vec4(0.0);
+    for (int k = -r; k <= r; ++k) {
+        int x = clamp(int(id.x) + k, 0, last);
+        acc += src[row + uint(x)];
+    }
+    tmp[row + id.x] = acc * (1.0 / float(2 * r + 1));
+}

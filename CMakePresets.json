@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "msvc",
+      "displayName": "Visual Studio 2026 (fetch pinned deps)",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "ISC_WITH_ENKITS": "ON",
+        "ISC_WITH_SIMPLE_ECS": "ON",
+        "ISC_WITH_VULKAN": "ON"
+      }
+    },
+    {
+      "name": "msvc-offline",
+      "displayName": "Visual Studio 2026 (no network: serial scheduler, no ECS)",
+      "inherits": "msvc",
+      "cacheVariables": {
+        "ISC_WITH_ENKITS": "OFF",
+        "ISC_WITH_SIMPLE_ECS": "OFF"
+      }
+    },
+    {
+      "name": "ninja",
+      "displayName": "Ninja (Linux/macOS/clang)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ISC_WITH_ENKITS": "ON",
+        "ISC_WITH_SIMPLE_ECS": "ON",
+        "ISC_WITH_VULKAN": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "msvc-release", "configurePreset": "msvc", "configuration": "Release" },
+    { "name": "msvc-offline-release", "configurePreset": "msvc-offline", "configuration": "Release" },
+    { "name": "ninja", "configurePreset": "ninja" }
+  ],
+  "testPresets": [
+    { "name": "msvc-release", "configurePreset": "msvc", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "msvc-offline-release", "configurePreset": "msvc-offline", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "ninja", "configurePreset": "ninja", "output": { "outputOnFailure": true } }
+  ]
+}
